@@ -1,0 +1,7 @@
+Models 
+Gemini : https://ai.google.dev/gemini-api/docs/pricing?utm_source=chatgpt.com&hl=ko
+OpenAI : https://openai.com/ko-KR/api/pricing/?utm_source=chatgpt.com
+
+
+Dev Tools
+Playwright : https://playwright.dev/python/docs/intro
