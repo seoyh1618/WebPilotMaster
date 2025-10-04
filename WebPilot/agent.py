@@ -1,28 +1,31 @@
+from google.adk.tools.agent_tool import AgentTool
 from google.adk.agents import Agent
 from google.adk.tools import google_search
-from google.adk.tools import agent_tool
-
-from WebPilot.prompt import INSTRUCTION
-from WebPilot.constants.constants import MODEL_GEMINI_2_5_FLASH
+from WebPilot.prompt import INSTRUCTION,DESCRIPTION
+from WebPilot.constants.constants import MODEL_GEMINI_2_5_FLASH,MODEL_O3_MINI
 from google.adk.models.lite_llm import LiteLlm
 from dotenv import load_dotenv
-
+from WebPilot.planner_agents.Domain_Priority_Classifier_Agent.agent import Domain_Priority_Classifier_Agent
+from WebPilot.executor_agents.multimodal_perceiver_agent.agent import (
+    Multimodal_Perceiver_Agent,
+)
 load_dotenv()
+LLM_CLIENT = LiteLlm(model=MODEL_O3_MINI)
 
-#agent_search = Agent(
-#    name="google_search_agent",
-#    model=MODEL_GEMINI_2_5_FLASH,
-#    description="An agent that performs Google searches.",
-#    instruction="Perform a Google search.",
-#    tools=[google_search]
-#)
+
+domain_classifier_tool = AgentTool(
+    agent=Domain_Priority_Classifier_Agent
+)
+
+perceiver_tool = AgentTool(
+    agent=Multimodal_Perceiver_Agent
+)
 
 root_agent = Agent(
-    name="Language_Translator_Agent",
-    model=MODEL_GEMINI_2_5_FLASH,
-    description="한국어 입력을 자연스럽고 정확한 영어로 번역하는 에이전트입니다. 원문의 의미·톤·형식을 최대한 유지하며, 번역을 수행합니다.",
-    instruction=INSTRUCTION,
-    #tools=[agent_tool.AgentTool(agent=agent_search)],
-    #sub_agents=[test_case_generator_agent],
-    output_key="Language_Translator_output",
+    name="WebPilot_Root_Orchestrator",
+    model=LLM_CLIENT,
+    description=DESCRIPTION,   # ← 프롬프트 템플릿 사용
+    instruction=INSTRUCTION,   # ← 프롬프트 템플릿 사용
+    tools=[domain_classifier_tool, perceiver_tool],
+    output_key="WebPilot_Root_Output",
 )

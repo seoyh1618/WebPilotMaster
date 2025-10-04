@@ -19,7 +19,6 @@ import re
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SHOT_ROOT = PROJECT_ROOT / "artifacts" / "screenshots"
 
-
 def build_shot_path(url: str, domain_label: str, hint: str, strategy: str | None = None) -> Path:
     """
     지정한 규칙으로 스크린샷 경로를 생성합니다.

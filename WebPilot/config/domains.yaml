@@ -1,0 +1,522 @@
+version: 2
+
+# 전역 설정
+global_config:
+  default_confidence_threshold: 0.6
+  max_candidates_for_ranking: 3
+  enable_clarification_prompt: true
+
+domains:
+  - name: "일반대학원"
+    domain_id: "general_grad"
+    urls:
+      - "https://grad.ssu.ac.kr/"
+    aliases: ["숭실 일반대학원", "Graduate School", "대학원 본부", "grad", "일반대"]
+    
+    description: "숭실대학교 일반대학원은 석사·박사 학위 과정을 운영하며, 전일제 학생 중심의 학사 행정, 논문 심사, 연구 과제, 장학금, BK21 등을 관장하는 메인 대학원입니다."
+    
+    importance_weight: 0.95
+    freshness_weight: 0.85
+    is_default_fallback: true
+    
+    specialization:
+      type: "general"
+      scope: "전체 학사 행정 및 학위 과정 (석사·박사·석박사통합)"
+      target_audience: ["일반대학원생", "전일제 석박사", "연구 중심 학생", "전 구성원"]
+      
+    key_features:
+      - "석사·박사·석박사통합 학위 과정"
+      - "논문 심사 및 학위 청구 절차"
+      - "RA/TA 장학금 및 연구 과제"
+      - "전일제 학사 일정, 등록금, 증명서 발급"
+      - "BK21, 세미나, 학술대회, 자격시험"
+    
+    heuristic:
+      exclusive_signals:
+        - "BK21"
+        - "석박사통합"
+        - "박사과정"
+        - "박사학위"
+        - "논문심사위원회"
+        - "학위청구논문"
+        - "종합시험"
+        - "자격시험"
+      
+      strong_signals:
+        - "논문심사"
+        - "논문제출"
+        - "학위청구"
+        - "RA"
+        - "TA"
+        - "연구장학생"
+        - "세미나"
+        - "학술대회"
+        - "연구과제"
+        - "전일제"
+        - "지도교수"
+        - "연구실배정"
+      
+      common_signals:
+        - "등록금"
+        - "장학금"
+        - "학사일정"
+        - "증명서"
+        - "서식"
+        - "휴학"
+        - "복학"
+        - "수강신청"
+        - "성적"
+        - "졸업요건"
+        - "사물함"
+      
+      negative_signals:
+        - "재직자 전용"
+        - "야간수업"
+        - "주말수업"
+        - "파트타임"
+        - "ITMBA"
+        - "창업과정"
+        - "교원자격증"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "논문.*심사"
+        - "학위.*청구"
+        - "전일제.*과정"
+        - "BK21"
+        - "종합시험"
+        - "자격시험"
+      
+      exclude_patterns:
+        - "재직자.*야간"
+        - "ITMBA"
+        - "창업.*벤처.*과정"
+        - "교직.*자격증"
+        - "목회.*과정"
+    
+    affiliations:
+      colleges_summary:
+        - name: "인문대학"
+          departments: ["국어국문학과", "영어영문학과", "독어독문학과", "불어불문학과", "중어중문학과", "일어일문학과", "철학과", "사학과", "평생교육학과", "문예창작학과", "기독교학과"]
+        
+        - name: "사회과학대학"
+          departments: ["사회복지학과", "행정학과", "정치외교학과", "정보사회학과", "언론홍보학과"]
+        
+        - name: "법과대학"
+          departments: ["법학과", "글로벌법률학과"]
+        
+        - name: "경제통상대학"
+          departments: ["경제학과", "금융학과", "국제통상학과"]
+        
+        - name: "경영대학"
+          departments: ["경영학과", "회계학과", "벤처중소기업학과"]
+        
+        - name: "자연과학대학"
+          departments: ["수학과", "물리학과", "화학과", "정보통계·보험수리학과", "생명정보학과"]
+        
+        - name: "공과대학"
+          departments: ["화학공학과", "유기신소재·파이버공학과", "전기공학과", "기계공학과", "산업정보시스템공학과", "건축학과"]
+        
+        - name: "IT대학"
+          departments: ["컴퓨터학과", "전자정보공학과", "미디어학과", "소프트웨어학과", "AI융합학과", "스마트시스템소프트웨어학과"]
+      
+      cooperative_programs:
+        - "IT정책경영학과"
+        - "메타버스·문화콘텐츠학과"
+        - "한국학과"
+        - "정보통신융합학과"
+        - "융합소프트웨어학과"
+        - "금융기술융합학과"
+        - "IT유통물류학과"
+        - "재난안전관리학과"
+        - "기독교통일지도자학과"
+        - "스마트웨어러블공학과"
+        - "안보공익경영학과"
+        - "프로젝트경영학과"
+        - "안전·보건융합공학과"
+        - "국방산업정책통상학과"
+        - "친환경화학소재융합학과"
+        - "AI테크노융합학과"
+        - "지능형반도체학과"
+        - "에너지정책·기술융합학과"
+        - "AI융합보안학과"
+        - "미래교육경영학과"
+
+  - name: "IT·데이터·AI대학원(ITMBA)"
+    domain_id: "itmba"
+    urls:
+      - "https://itmba.ssu.ac.kr/"
+    aliases: ["ITMBA", "IT MBA", "AI융합대학원", "데이터사이언스MBA", "IT경영대학원", "아이티엠비에이"]
+    
+    description: "IT·데이터·AI 중심의 특수대학원으로, 재직자를 위한 야간/주말 수업을 운영하며 데이터 사이언스, AI 경영, 디지털 전환(DX)에 특화된 MBA 과정입니다."
+    
+    importance_weight: 0.75
+    freshness_weight: 0.80
+    is_default_fallback: false
+    
+    specialization:
+      type: "specialized"
+      scope: "IT/데이터/AI 실무 중심 MBA (재직자 전용)"
+      target_audience: ["재직자", "야간 학생", "주말 학생", "IT/데이터 전문가"]
+    
+    key_features:
+      - "재직자 맞춤 야간/주말 집중 수업"
+      - "데이터사이언스 및 AI 전문 트랙"
+      - "산학 협력 캡스톤 프로젝트"
+      - "디지털 전환(DX) 및 IT 전략 교육"
+      - "비즈니스 애널리틱스 및 빅데이터"
+    
+    heuristic:
+      exclusive_signals:
+        - "ITMBA"
+        - "아이티엠비에이"
+        - "IT MBA"
+        - "데이터사이언스MBA"
+      
+      strong_signals:
+        - "재직자"
+        - "야간수업"
+        - "주말수업"
+        - "파트타임"
+        - "비즈니스애널리틱스"
+        - "디지털전환"
+        - "DX"
+        - "AI경영"
+        - "데이터사이언스"
+        - "빅데이터"
+        - "산학프로젝트"
+        - "캡스톤"
+        - "정보보안"
+        - "클라우드"
+      
+      common_signals:
+        - "MBA"
+        - "경영학"
+        - "데이터"
+        - "AI"
+        - "IT"
+      
+      negative_signals:
+        - "전일제"
+        - "논문심사"
+        - "박사과정"
+        - "창업전문"
+        - "교직"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "ITMBA"
+        - "재직자.*야간"
+        - "데이터.*MBA"
+        - "AI.*MBA"
+        - "IT.*경영"
+      
+      exclude_patterns:
+        - "전일제.*학사"
+        - "논문.*심사.*위원"
+        - "박사.*학위"
+    
+    affiliations:
+      focus_tracks:
+        - "데이터사이언스 트랙"
+        - "인공지능 트랙"
+        - "소프트웨어공학 트랙"
+        - "정보보안 트랙"
+        - "디지털전환(DX) 트랙"
+        - "IT경영 트랙"
+        - "클라우드/플랫폼 트랙"
+
+  - name: "중소기업대학원"
+    domain_id: "sme_grad"
+    urls:
+      - "https://small.ssu.ac.kr/"
+    aliases: ["벤처중소기업대학원", "중소기업원", "GSB", "벤처대학원"]
+    
+    description: "중소기업·벤처·창업에 특화된 특수대학원으로, 창업자 및 중소기업 재직자를 위한 경영 교육과 현장 실습 중심 프로그램을 운영합니다."
+    
+    importance_weight: 0.65
+    freshness_weight: 0.70
+    is_default_fallback: false
+    
+    specialization:
+      type: "specialized"
+      scope: "창업/벤처/중소기업 경영 (재직자·창업자 중심)"
+      target_audience: ["창업자", "예비 창업자", "중소기업 재직자", "벤처 종사자", "가족기업 경영자"]
+    
+    key_features:
+      - "창업 및 벤처 경영 전문 교육"
+      - "중소기업 맞춤형 경영 전략"
+      - "기술 창업 및 스타트업 지원"
+      - "가족기업 승계 및 네트워크"
+      - "산학 프로젝트 및 현장 실습"
+    
+    heuristic:
+      exclusive_signals:
+        - "중소기업대학원"
+        - "벤처중소기업대학원"
+        - "GSB"
+      
+      strong_signals:
+        - "중소기업"
+        - "벤처"
+        - "창업"
+        - "스타트업"
+        - "가족기업"
+        - "경영자과정"
+        - "CEO과정"
+        - "기술창업"
+        - "창업지원"
+        - "중소기업경영"
+      
+      common_signals:
+        - "경영"
+        - "재직자"
+        - "네트워크"
+      
+      negative_signals:
+        - "IT전문"
+        - "데이터사이언스"
+        - "교직"
+        - "상담"
+        - "신학"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "창업.*벤처"
+        - "중소기업.*경영"
+        - "스타트업"
+        - "가족.*기업"
+      
+      exclude_patterns:
+        - "IT.*MBA"
+        - "데이터.*MBA"
+        - "교원.*자격"
+        - "목회"
+    
+    affiliations:
+      focus_areas:
+        - "창업/벤처 경영"
+        - "중소기업 경영"
+        - "기술 창업"
+        - "가족기업 경영"
+        - "글로벌 경영"
+
+  - name: "교육대학원"
+    domain_id: "edu_grad"
+    urls:
+      - "https://edu.ssu.ac.kr/"
+    aliases: ["숭실 교육대학원", "GSE", "교대원"]
+    
+    description: "교직·상담·교육행정 등 교육 전문가 양성을 위한 특수대학원으로, 교원 자격증 취득 및 현직 교사 재교육을 지원합니다."
+    
+    importance_weight: 0.60
+    freshness_weight: 0.55
+    is_default_fallback: false
+    
+    specialization:
+      type: "specialized"
+      scope: "교육/교직/상담 전문 (교사·교육전문가 중심)"
+      target_audience: ["현직교사", "예비교사", "교육전문가", "상담사", "교육행정가"]
+    
+    key_features:
+      - "교원 자격증 취득 과정 (2급 정교사)"
+      - "교직 및 교육과정 전문 교육"
+      - "상담 교육 및 상담심리 실습"
+      - "현장교사 맞춤형 재교육 과정"
+      - "교육 행정 및 리더십 개발"
+    
+    heuristic:
+      exclusive_signals:
+        - "교육대학원"
+        - "GSE"
+        - "교원자격증"
+        - "정교사"
+      
+      strong_signals:
+        - "교직"
+        - "교육과정"
+        - "현장교사"
+        - "상담교육"
+        - "교육행정"
+        - "방과후"
+        - "교육복지"
+        - "교육리더십"
+        - "교육심리"
+        - "특수교육"
+      
+      common_signals:
+        - "교육"
+        - "상담"
+        - "학습"
+      
+      negative_signals:
+        - "경영"
+        - "창업"
+        - "IT"
+        - "데이터"
+        - "목회"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "교원.*자격"
+        - "정교사"
+        - "교직.*과정"
+        - "교육.*자격증"
+      
+      exclude_patterns:
+        - "벤처.*창업"
+        - "IT.*MBA"
+        - "목회.*과정"
+    
+    affiliations:
+      focus_majors:
+        - "교육학"
+        - "교육행정"
+        - "상담교육"
+        - "교과교육"
+        - "특수교육"
+
+  - name: "사회복지대학원"
+    domain_id: "social_welfare_grad"
+    urls:
+      - "https://sabok.ssu.ac.kr/"
+    aliases: ["숭실 사회복지대학원", "사복대원"]
+    
+    description: "사회복지 실무 및 정책 전문가 양성을 위한 특수대학원으로, 사회복지사 자격증 취득 및 임상 실무 교육을 제공합니다."
+    
+    importance_weight: 0.60
+    freshness_weight: 0.55
+    is_default_fallback: false
+    
+    specialization:
+      type: "specialized"
+      scope: "사회복지 실무 및 정책 (복지전문가 중심)"
+      target_audience: ["사회복지사", "복지기관 종사자", "공공복지 담당자", "예비 사회복지사"]
+    
+    key_features:
+      - "사회복지사 1급 자격증 취득 지원"
+      - "임상 사회복지 실무 교육"
+      - "아동·노인·장애인 복지 전문화"
+      - "사례관리 및 지역사회 복지 실습"
+      - "복지 정책 및 행정"
+    
+    heuristic:
+      exclusive_signals:
+        - "사회복지대학원"
+        - "사회복지사"
+      
+      strong_signals:
+        - "임상사회복지"
+        - "아동복지"
+        - "가족복지"
+        - "노인복지"
+        - "장애인복지"
+        - "사례관리"
+        - "복지정책"
+        - "지역사회복지"
+        - "복지행정"
+      
+      common_signals:
+        - "사회복지"
+        - "실습"
+        - "자격증"
+      
+      negative_signals:
+        - "경영"
+        - "IT"
+        - "창업"
+        - "교직"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "사회복지사"
+        - "임상.*사회복지"
+        - "복지.*실습"
+      
+      exclude_patterns:
+        - "경영.*MBA"
+        - "IT"
+        - "교원.*자격"
+    
+    affiliations:
+      focus_areas:
+        - "임상사회복지"
+        - "아동가족복지"
+        - "노인복지"
+        - "장애인복지"
+        - "지역사회복지"
+        - "사회복지정책"
+
+  - name: "기독교학대학원"
+    domain_id: "theology_grad"
+    urls:
+      - "https://sgcs.ssu.ac.kr/"
+    aliases: ["숭실 기독교학대학원", "SGCS", "신학대학원", "기신대원"]
+    
+    description: "기독교학·신학·목회·상담·선교 등 기독교 전문 인력 양성을 위한 특수대학원으로, 목회자 및 기독교 지도자 교육에 특화되어 있습니다."
+    
+    importance_weight: 0.55
+    freshness_weight: 0.55
+    is_default_fallback: false
+    
+    specialization:
+      type: "specialized"
+      scope: "신학/목회/기독교 상담 (목회자·선교사 중심)"
+      target_audience: ["목회자", "신학도", "기독교 상담사", "선교사", "교회 지도자"]
+    
+    key_features:
+      - "목회학 및 신학 전문 교육"
+      - "기독교 상담 및 상담심리"
+      - "선교 및 교육목회"
+      - "성서 연구 및 조직신학"
+      - "교회 행정 및 리더십"
+    
+    heuristic:
+      exclusive_signals:
+        - "기독교학대학원"
+        - "SGCS"
+        - "신학대학원"
+        - "목회학"
+      
+      strong_signals:
+        - "목회"
+        - "신학"
+        - "성서"
+        - "기독교상담"
+        - "선교"
+        - "교육목회"
+        - "교회행정"
+        - "설교학"
+        - "조직신학"
+        - "성경신학"
+      
+      common_signals:
+        - "상담"
+        - "종교"
+        - "교회"
+      
+      negative_signals:
+        - "경영"
+        - "IT"
+        - "창업"
+        - "데이터"
+    
+    guardrails:
+      must_prioritize_patterns:
+        - "목회.*과정"
+        - "신학.*연구"
+        - "기독교.*상담"
+        - "선교"
+      
+      exclude_patterns:
+        - "MBA"
+        - "IT"
+        - "창업"
+    
+    affiliations:
+      focus_majors:
+        - "기독교학/신학"
+        - "목회학"
+        - "기독교상담"
+        - "선교학"
+        - "교육목회"
