@@ -1,10 +1,11 @@
 # WebPilot/executor_agents/multimodal_perceiver_agent/html_parser.py
-from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
 import logging
 import re
-from WebPilot.constants import constants  # 변경
+from urllib.parse import urljoin
+from WebPilot.constants import constants
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,11 @@ class HTMLParserError(Exception):
     pass
 
 class HTMLParser:
-    """HTML 구조 분석 및 요소 추출"""
+    """HTML 구조 분석 및 요소 추출 (드롭다운 지원)"""
     
     def __init__(self):
         self.soup: Optional[BeautifulSoup] = None
+        self.base_url: str = ""
         self.max_links = constants.PERCEIVER_MAX_LINKS
         self.max_text_length = constants.PERCEIVER_MAX_TEXT_LENGTH
         self.max_keyword_contexts = constants.PERCEIVER_MAX_KEYWORD_CONTEXTS
@@ -27,7 +29,7 @@ class HTMLParser:
         
         Args:
             html_content: HTML 문자열
-            base_url: 기준 URL (상대 경로 변환용) ⭐
+            base_url: 기준 URL (상대 경로 변환용)
             
         Returns:
             구조화된 페이지 정보
@@ -49,6 +51,9 @@ class HTMLParser:
             forms = self._extract_forms()
             headings = self._extract_headings()
             
+            # ⭐ 네비게이션 구조 (드롭다운 포함)
+            nav_structure = self._extract_navigation_structure()
+            
             # 텍스트 콘텐츠
             main_text = self._extract_main_text()
             
@@ -68,14 +73,148 @@ class HTMLParser:
                 "total_buttons": len(buttons),
                 "has_navigation": self._has_navigation(),
                 "has_search": self._has_search_box(),
-                "has_login": len(forms) > 0 and self._has_login_form(forms)
+                "has_login": len(forms) > 0 and self._has_login_form(forms),
+                "navigation_structure": nav_structure  # ⭐ 추가
             }
             
         except Exception as e:
             logger.error(f"HTML 파싱 실패: {e}")
             raise HTMLParserError(f"HTML 파싱 실패: {e}")
     
-    # (나머지 메서드는 동일하게 유지)
+    def _extract_navigation_structure(self) -> List[Dict]:
+        """
+        네비게이션 메뉴 구조 추출 (드롭다운 포함)
+        
+        Returns:
+            [
+                {
+                    "text": "정보광장",
+                    "href": "/info",
+                    "has_submenu": true,
+                    "submenus": [
+                        {"text": "공지사항", "href": "/notice"},
+                        {"text": "FAQ", "href": "/faq"}
+                    ]
+                }
+            ]
+        """
+        nav_structure = []
+        
+        # <nav> 태그 찾기
+        nav = self.soup.find('nav') or self.soup.find(attrs={'role': 'navigation'})
+        
+        if not nav:
+            # nav 없으면 header 내부 찾기
+            header = self.soup.find('header')
+            if header:
+                # header 내부의 ul.menu, ul.nav 등
+                nav = (header.find('ul', class_=re.compile(r'menu|nav', re.I)) or 
+                       header.find('ul') or
+                       header.find('div', class_=re.compile(r'menu|nav', re.I)))
+        
+        if not nav:
+            logger.warning("네비게이션 구조를 찾을 수 없습니다")
+            return []
+        
+        logger.info("네비게이션 구조 추출 중...")
+        
+        # 최상위 메뉴 항목 찾기
+        # 일반적으로 nav > ul > li 구조
+        top_level_items = []
+        
+        # 방법 1: nav 바로 아래 ul의 직계 li들
+        direct_ul = nav.find('ul', recursive=False)
+        if direct_ul:
+            top_level_items = direct_ul.find_all('li', recursive=False)
+        
+        # 방법 2: nav 내부의 모든 li 중 부모가 nav에 가까운 것들
+        if not top_level_items:
+            all_lis = nav.find_all('li')
+            # depth가 가장 얕은 li들만
+            if all_lis:
+                min_depth = min(len(list(li.parents)) for li in all_lis)
+                top_level_items = [li for li in all_lis if len(list(li.parents)) == min_depth]
+        
+        logger.info(f"최상위 메뉴 항목: {len(top_level_items)}개")
+        
+        for item in top_level_items[:15]:  # 최대 15개
+            try:
+                menu_data = self._parse_menu_item(item)
+                if menu_data:
+                    nav_structure.append(menu_data)
+            except Exception as e:
+                logger.warning(f"메뉴 항목 파싱 실패: {e}")
+                continue
+        
+        logger.info(f"네비게이션 구조 추출 완료: {len(nav_structure)}개 메뉴")
+        
+        return nav_structure
+    
+    def _parse_menu_item(self, item) -> Optional[Dict]:
+        """메뉴 항목 파싱"""
+        # 메뉴 텍스트와 링크
+        main_link = item.find('a', recursive=False) or item.find('a')
+        
+        if not main_link:
+            return None
+        
+        menu_text = main_link.get_text(strip=True)
+        menu_href = main_link.get('href', '')
+        
+        if not menu_text:
+            return None
+        
+        menu_data = {
+            'text': menu_text,
+            'href': self._make_absolute_url(menu_href),
+            'has_submenu': False,
+            'submenus': []
+        }
+        
+        # 하위 메뉴 찾기
+        # 방법 1: 직계 자식 ul
+        submenu_container = item.find('ul', recursive=False)
+        
+        # 방법 2: 형제 ul (일부 구조에서는 li > a + ul)
+        if not submenu_container:
+            submenu_container = main_link.find_next_sibling('ul')
+        
+        # 방법 3: div.submenu, div.dropdown 등
+        if not submenu_container:
+            submenu_container = item.find('div', class_=re.compile(r'sub|dropdown|mega', re.I))
+            if submenu_container:
+                submenu_container = submenu_container.find('ul')
+        
+        if submenu_container:
+            submenu_links = submenu_container.find_all('a')[:15]
+            
+            if submenu_links:
+                menu_data['has_submenu'] = True
+                
+                for sub_link in submenu_links:
+                    sub_text = sub_link.get_text(strip=True)
+                    sub_href = sub_link.get('href', '')
+                    
+                    if sub_text:
+                        menu_data['submenus'].append({
+                            'text': sub_text,
+                            'href': self._make_absolute_url(sub_href)
+                        })
+                
+                logger.debug(f"드롭다운 메뉴 발견: {menu_text} ({len(menu_data['submenus'])}개 하위)")
+        
+        return menu_data
+    
+    def _make_absolute_url(self, url: str) -> str:
+        """상대 URL을 절대 URL로 변환"""
+        if not url or url.startswith(('#', 'javascript:')):
+            return ''
+        
+        if self.base_url:
+            return urljoin(self.base_url, url)
+        
+        return url
+    
     def _extract_title(self) -> str:
         """페이지 제목 추출"""
         title = self.soup.find('title')
@@ -96,8 +235,8 @@ class HTMLParser:
             return og_desc.get('content', '')
         return ""
     
-    def _extract_links(self)-> List[Dict[str, str]]:
-        """링크 추출 (절대 URL 변환)"""
+    def _extract_links(self) -> List[Dict[str, str]]:
+        """링크 추출 (절대 URL)"""
         links = []
         seen_urls = set()
         
@@ -108,9 +247,8 @@ class HTMLParser:
             if not text or href.startswith(('#', 'javascript:')):
                 continue
             
-            # ⭐⭐⭐ 절대 URL 변환
-            if self.base_url:
-                href = urljoin(self.base_url, href)
+            # 절대 URL 변환
+            href = self._make_absolute_url(href)
             
             if href in seen_urls:
                 continue

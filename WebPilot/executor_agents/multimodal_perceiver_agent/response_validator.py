@@ -142,7 +142,7 @@ class ResponseValidator:
             try:
                 # 필수 필드
                 if 'type' not in elem or 'text' not in elem:
-                    logger.warning(f"요소 필드 누락, 건너뜀: {elem}")
+                    logger.warning(f"요소 필드 누락, 건너뜀: {repr(elem)}")
                     continue
                 
                 # 타입 검증
@@ -154,13 +154,29 @@ class ResponseValidator:
                 # coordinates 검증
                 if 'coordinates' in elem and elem['coordinates']:
                     coords = elem['coordinates']
-                    if not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords:
-                        logger.warning(f"잘못된 좌표 형식, 제거: {coords}")
+                    
+                    # ⭐ 문자열로 들어온 경우 dict로 파싱
+                    if isinstance(coords, str):
+                        try:
+                            coords = json.loads(coords)
+                            elem['coordinates'] = coords
+                        except json.JSONDecodeError:
+                            logger.warning(f"요소 좌표 파싱 실패, 제거: {repr(coords)}")
+                            elem['coordinates'] = None
+                            coords = None
+                    
+                    # dict 검증
+                    if coords and (not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords):
+                        logger.warning(f"잘못된 좌표 형식, 제거: {repr(coords)}")
                         elem['coordinates'] = None
-                    else:
-                        # 음수 좌표 수정
-                        elem['coordinates']['x'] = max(0, float(coords['x']))
-                        elem['coordinates']['y'] = max(0, float(coords['y']))
+                    elif coords:
+                        try:
+                            # 음수 좌표 수정
+                            elem['coordinates']['x'] = max(0, float(coords['x']))
+                            elem['coordinates']['y'] = max(0, float(coords['y']))
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"좌표 값 변환 실패: {repr(coords)}, 오류: {e}")
+                            elem['coordinates'] = None
                 
                 # 기본값
                 elem.setdefault('href', None)
@@ -173,7 +189,7 @@ class ResponseValidator:
                 validated.append(element_info)
                 
             except Exception as e:
-                logger.warning(f"요소 검증 실패, 건너뜀: {elem}, 오류: {e}")
+                logger.warning(f"요소 검증 실패, 건너뜀: {repr(elem)}, 오류: {e}")
                 continue
         
         logger.info(f"요소 검증 완료: {len(validated)}/{len(elements)}개")
@@ -246,13 +262,28 @@ class ResponseValidator:
             # coordinates 검증
             if 'coordinates' in action and action['coordinates']:
                 coords = action['coordinates']
-                if not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords:
-                    logger.warning(f"잘못된 좌표, 제거: {coords}")
+                
+                # ⭐ 문자열로 들어온 경우 dict로 파싱 시도
+                if isinstance(coords, str):
+                    try:
+                        coords = json.loads(coords)
+                        action['coordinates'] = coords
+                    except json.JSONDecodeError:
+                        logger.warning(f"좌표 파싱 실패, 제거: {repr(coords)}")
+                        action['coordinates'] = None
+                        coords = None
+                
+                # dict 검증
+                if coords and (not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords):
+                    logger.warning(f"잘못된 좌표 형식, 제거: {repr(coords)}")
                     action['coordinates'] = None
-                else:
-                    action['coordinates']['x'] = max(0, float(coords['x']))
-                    action['coordinates']['y'] = max(0, float(coords['y']))
-            
+                elif coords:
+                    try:
+                        action['coordinates']['x'] = max(0, float(coords['x']))
+                        action['coordinates']['y'] = max(0, float(coords['y']))
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"좌표 값 변환 실패, 제거: {repr(coords)}, 오류: {e}")
+                        action['coordinates'] = None
             # is_fallback 검증
             if 'is_fallback' not in action:
                 action['is_fallback'] = False
@@ -575,13 +606,29 @@ class ResponseValidator:
                 # coordinates 검증
                 if 'coordinates' in elem and elem['coordinates']:
                     coords = elem['coordinates']
-                    if not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords:
-                        logger.warning(f"잘못된 좌표 형식, 제거: {coords}")
+                    
+                    # ⭐ 문자열로 들어온 경우 dict로 파싱
+                    if isinstance(coords, str):
+                        try:
+                            coords = json.loads(coords)
+                            elem['coordinates'] = coords
+                        except json.JSONDecodeError:
+                            logger.warning(f"요소 좌표 파싱 실패, 제거: {repr(coords)}")
+                            elem['coordinates'] = None
+                            coords = None
+                    
+                    # dict 검증
+                    if coords and (not isinstance(coords, dict) or 'x' not in coords or 'y' not in coords):
+                        logger.warning(f"잘못된 좌표 형식, 제거: {repr(coords)}")
                         elem['coordinates'] = None
-                    else:
-                        # 음수 좌표 수정
-                        elem['coordinates']['x'] = max(0, float(coords['x']))
-                        elem['coordinates']['y'] = max(0, float(coords['y']))
+                    elif coords:
+                        try:
+                            # 음수 좌표 수정
+                            elem['coordinates']['x'] = max(0, float(coords['x']))
+                            elem['coordinates']['y'] = max(0, float(coords['y']))
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"좌표 값 변환 실패: {repr(coords)}, 오류: {e}")
+                            elem['coordinates'] = None
                 
                 # 기본값
                 elem.setdefault('href', None)

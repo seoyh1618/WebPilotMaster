@@ -1,0 +1,10 @@
+{
+  "query": "숭실대학원 사물함 신청 방법 알려줘",
+  "timestamp": "2025-10-06T02:26:10.749035",
+  "result": {
+    "status": "error",
+    "error_message": "초기 계획 생성 실패",
+    "attempts": 0,
+    "visited_urls": []
+  }
+}

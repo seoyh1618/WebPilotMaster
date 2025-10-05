@@ -1,0 +1,82 @@
+{
+  "scenario": {
+    "name": "숭실대학원 사물함 정보",
+    "url": "https://grad.ssu.ac.kr/",
+    "query": "사물함 신청 방법 알려줘"
+  },
+  "timestamp": "2025-10-06T04:25:06.485654",
+  "result": {
+    "analysis": {
+      "information_found": false,
+      "extracted_info": null,
+      "confidence": 0.3,
+      "page_type": "form_page",
+      "title": "일반대학원 | 숭실대학교",
+      "summary": "이 페이지는 form_page 타입입니다. VLM 분석 실패로 제한된 정보만 제공됩니다.",
+      "visible_elements": [
+        {
+          "type": "link",
+          "text": "일반대학원",
+          "coordinates": {
+            "x": 100.0,
+            "y": 100.0
+          },
+          "href": "https://grad.ssu.ac.kr/",
+          "description": "링크: 일반대학원"
+        },
+        {
+          "type": "link",
+          "text": "대학원안내",
+          "coordinates": {
+            "x": 200.0,
+            "y": 100.0
+          },
+          "href": "https://grad.ssu.ac.kr/%eb%8c%80%ed%95%99%ec%9b%90%ec%95%88%eb%82%b4/%eb%8c%80%ed%95%99%ec%9b%90%ec%86%8c%ea%b0%9c/",
+          "description": "링크: 대학원안내"
+        },
+        {
+          "type": "link",
+          "text": "원장인사말",
+          "coordinates": {
+            "x": 300.0,
+            "y": 100.0
+          },
+          "href": "https://grad.ssu.ac.kr/%eb%8c%80%ed%95%99%ec%9b%90%ec%95%88%eb%82%b4/%ec%9b%90%ec%9e%a5%ec%9d%b8%ec%82%ac%eb%a7%90/",
+          "description": "링크: 원장인사말"
+        },
+        {
+          "type": "link",
+          "text": "연혁",
+          "coordinates": {
+            "x": 400.0,
+            "y": 100.0
+          },
+          "href": "https://grad.ssu.ac.kr/%eb%8c%80%ed%95%99%ec%9b%90%ec%95%88%eb%82%b4/%ec%97%b0%ed%98%81/",
+          "description": "링크: 연혁"
+        },
+        {
+          "type": "link",
+          "text": "위치",
+          "coordinates": {
+            "x": 500.0,
+            "y": 100.0
+          },
+          "href": "https://grad.ssu.ac.kr/%eb%8c%80%ed%95%99%ec%9b%90%ec%95%88%eb%82%b4/%ec%98%a4%ec%8b%9c%eb%8a%94%ea%b8%b8/",
+          "description": "링크: 위치"
+        }
+      ],
+      "keyword_matches": {},
+      "recommended_action": null,
+      "has_navigation_menu": false,
+      "has_search_box": false,
+      "has_login_form": false,
+      "requires_interaction": false,
+      "analysis_warnings": [
+        "VLM 분석 실패: 응답 검증 실패: VLM 응답 검증 실패: 필수 필드 누락: ['title']",
+        "HTML 파서만으로 제한된 분석 수행"
+      ]
+    },
+    "screenshot_path": null,
+    "execution_time": 17.682925701141357
+  }
+}
