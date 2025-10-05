@@ -1,7 +1,6 @@
 from __future__ import annotations
 from google.adk.tools import ToolContext
 
-
 from typing import Any, Dict, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -26,11 +25,25 @@ class DomainInfo(BaseModel):
     reasoning: str
     condition: Optional[str] = ""
 
+class SelectionInfo(BaseModel):
+    """선택 정보 (metadata 내부)"""
+    primary_count: int = 1
+    alternatives_count: int = 0
+    total_candidates: int = 0
+    filtered_out: int = 0
+    selected_count: int = 0
+    selection_rule: str = "1순위 무조건 + 2순위 이상 최소 1개"
+
+class DomainMetadata(BaseModel):
+    """메타데이터"""
+    total_time: float = 0.0
+    selection_info: SelectionInfo
+
 class DomainPriorityResult(BaseModel):
     primary: DomainInfo
     alternatives: List[DomainInfo]
     reason: str
-    metadata: dict
+    metadata: DomainMetadata  # ⭐ 구조화된 타입
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -53,44 +66,26 @@ def get_llm_client() -> LiteLlm:
         logger.info(f"LLM 클라이언트 초기화: {MODEL_O3_MINI}")
     return _llm_client_cache
 
-def _classify_handler(query: str,tool_context: ToolContext) -> Dict[str, Any]:
+def _classify_handler(query: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
-    도메인 우선순위 분류 핸들러 (개선 버전)
-    
-    Returns:
-        {
-            "primary": {
-                "domain": "일반대학원",
-                "uri": "https://grad.ssu.ac.kr/",
-                "score": 92.0,
-                "priority": "critical",
-                "confidence": "high",
-                "reasoning": "...",
-                "condition": ""
-            },
-            "alternatives": [
-                {
-                    "domain": "ITMBA",
-                    "uri": "https://itmba.ssu.ac.kr/",
-                    "score": 75.0,
-                    "priority": "high",
-                    "confidence": "medium",
-                    "reasoning": "...",
-                    "condition": "재직자인 경우"
-                }
-            ],
-            "reason": "판단 근거 | 시간 | 선택 정보",
-            "metadata": {
-                "total_time": 1.85,
-                "selection_info": {...}
-            }
-        }
+    도메인 우선순위 분류 핸들러
     """
     if not query or not query.strip():
         return {
             "primary": None,
             "alternatives": [],
-            "reason": "빈 쿼리"
+            "reason": "빈 쿼리",
+            "metadata": {
+                "total_time": 0.0,
+                "selection_info": {
+                    "primary_count": 0,
+                    "alternatives_count": 0,
+                    "total_candidates": 0,
+                    "filtered_out": 0,
+                    "selected_count": 0,
+                    "selection_rule": ""
+                }
+            }
         }
     
     try:
@@ -98,21 +93,59 @@ def _classify_handler(query: str,tool_context: ToolContext) -> Dict[str, Any]:
         llm_client = get_llm_client()
         result = classify_domain_priorities(query=query, llm_client=llm_client)
         
+        # ⭐ metadata 검증 및 보정
+        if 'metadata' not in result or not result['metadata']:
+            logger.warning("metadata 누락, 자동 생성")
+            result['metadata'] = {
+                "total_time": 0.0,
+                "selection_info": {
+                    "primary_count": 1 if result.get('primary') else 0,
+                    "alternatives_count": len(result.get('alternatives', [])),
+                    "total_candidates": 1 + len(result.get('alternatives', [])),
+                    "filtered_out": 0,
+                    "selected_count": 1 + len(result.get('alternatives', [])),
+                    "selection_rule": "1순위 무조건 + 2순위 이상 최소 1개"
+                }
+            }
+        
+        # selection_info 검증
+        if 'selection_info' not in result['metadata']:
+            logger.warning("selection_info 누락, 자동 생성")
+            result['metadata']['selection_info'] = {
+                "primary_count": 1 if result.get('primary') else 0,
+                "alternatives_count": len(result.get('alternatives', [])),
+                "total_candidates": 1 + len(result.get('alternatives', [])),
+                "filtered_out": 0,
+                "selected_count": 1 + len(result.get('alternatives', [])),
+                "selection_rule": "1순위 무조건 + 2순위 이상 최소 1개"
+            }
+        
         primary_domain = result.get("primary", {}).get("domain", "None") if result.get("primary") else "None"
         alt_count = len(result.get("alternatives", []))
         
         tool_context.state["Domain_Priority_Classifier_Agent_Output"] = result
-        tool_context.state["classification_time"] = result["metadata"].get("total_time")
-
-
+        tool_context.state["classification_time"] = result["metadata"].get("total_time", 0.0)
+        
         logger.info(f"분류 완료: {primary_domain} (+{alt_count}개 대안)")
         return result
+        
     except Exception as e:
         logger.error(f"분류 오류: {str(e)}", exc_info=True)
         return {
             "primary": None,
             "alternatives": [],
-            "reason": f"오류: {str(e)}"
+            "reason": f"오류: {str(e)}",
+            "metadata": {
+                "total_time": 0.0,
+                "selection_info": {
+                    "primary_count": 0,
+                    "alternatives_count": 0,
+                    "total_candidates": 0,
+                    "filtered_out": 0,
+                    "selected_count": 0,
+                    "selection_rule": ""
+                }
+            }
         }
 
 _agent_cache = None

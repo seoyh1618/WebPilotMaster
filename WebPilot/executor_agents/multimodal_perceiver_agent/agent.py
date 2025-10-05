@@ -1,84 +1,214 @@
 # WebPilot/executor_agents/multimodal_perceiver_agent/agent.py
 
-from __future__ import annotations
-
-from typing import Any, Dict, List
-from dotenv import load_dotenv
-
 from google.adk.agents import Agent
-from google.adk.tools import FunctionTool
 from google.adk.models.lite_llm import LiteLlm
+from .prompt import PERCEIVER_DESCRIPTION, PERCEIVER_INSTRUCTION
+from .state import PerceiverInput, PerceiverOutput, PageAnalysisResult
+from .screenshot import capture_screenshot_sync, ScreenshotCaptureError
+from .html_parser import HTMLParser, HTMLParserError
+from .vision_analyzer import VisionAnalyzer, VisionAnalyzerError
+from .response_validator import ResponseValidator
+from WebPilot.constants import constants
+import json
+import logging
+import time
+from typing import Optional
 
-from WebPilot.executor_agents.multimodal_perceiver_agent.prompt import INSTRUCTION, DESCRIPTION
-from WebPilot.constants.constants import MODEL_O3_MINI
+logger = logging.getLogger(__name__)
 
-load_dotenv()
+class MultilmodalPerceiverAgentClass:
+    """Multimodal Perceiver Agent 구현 (관찰자 + 다음 액션 추천)"""
+    
+    def __init__(self, model_name: str = constants.MODEL_O3_MINI):
+        # Perceiver는 VLM만 사용하므로 LLM은 불필요
+        # 하지만 Agent 인터페이스 호환성을 위해 유지
+        self.llm = LiteLlm(model=model_name)
+        self.agent = Agent(
+            name="MultimodalPerceiver",
+            model=self.llm,
+            description=PERCEIVER_DESCRIPTION,
+            instruction=PERCEIVER_INSTRUCTION
+        )
+        
+        # 컴포넌트 초기화
+        self.html_parser = HTMLParser()
+        self.vision_analyzer = VisionAnalyzer()
+        
+        logger.info("Multimodal Perceiver Agent 초기화 완료")
+    
+    def run(self, input_text: str) -> str:
+        """
+        AgentTool 인터페이스 호환 메서드
+        
+        Args:
+            input_text: JSON 형식 입력
+            {
+                "url": "https://grad.ssu.ac.kr/",
+                "query": "사물함 신청 방법",
+                "screenshot_required": true,
+                "depth": 0
+            }
+            
+        Returns:
+            JSON 형식 출력
+            {
+                "analysis": {
+                    "information_found": false,
+                    "recommended_action": {
+                        "should_click": true,
+                        "element_index": 0,
+                        "element_text": "학생지원",
+                        "confidence": 0.85,
+                        ...
+                    },
+                    ...
+                },
+                "execution_time": 5.23,
+                "success": true
+            }
+        """
+        start_time = time.time()
+        
+        try:
+            # 입력 파싱
+            input_data = json.loads(input_text)
+            perceiver_input = PerceiverInput(**input_data)
+            
+            logger.info("="*80)
+            logger.info(f"페이지 분석 시작")
+            logger.info(f"  - URL: {perceiver_input.url}")
+            logger.info(f"  - 질의: {perceiver_input.query}")
+            logger.info(f"  - Depth: {perceiver_input.depth}")
+            logger.info("="*80)
+            
+            # 1. 스크린샷 + HTML 캡처
+            logger.info("Step 1: 페이지 캡처 중...")
+            base64_image, html_content = self._capture_page(perceiver_input.url)
+            logger.info("  ✓ 캡처 완료")
+            
+            # 2. HTML 파싱
+            logger.info("Step 2: HTML 파싱 중...")
+            html_summary = self._parse_html(html_content, perceiver_input.url)
+            logger.info(f"  ✓ 파싱 완료 (링크: {len(html_summary.get('links', []))}개)")
+            
+            # 3. Vision 분석 (다음 액션 추천 포함)
+            logger.info("Step 3: VLM 분석 중 (액션 추천 포함)...")
+            analysis = self._analyze_with_vision(
+                base64_image=base64_image,
+                html_summary=html_summary,
+                query=perceiver_input.query,
+                url=perceiver_input.url
+            )
+            logger.info("  ✓ 분석 완료")
+            
+            # 4. 결과 생성
+            execution_time = time.time() - start_time
+            
+            output = PerceiverOutput(
+                analysis=analysis,
+                screenshot_path=None,  # 필요시 저장 경로 추가
+                execution_time=execution_time,
+                success=True,
+                fallback_used=analysis.confidence < 0.5
+            )
+            
+            logger.info("="*80)
+            logger.info(f"페이지 분석 완료:")
+            logger.info(f"  - 정보 발견: {analysis.information_found}")
+            logger.info(f"  - 실행 시간: {execution_time:.2f}초")
+            
+            if analysis.recommended_action and analysis.recommended_action.should_click:
+                rec = analysis.recommended_action
+                logger.info(f"  - 추천: [{rec.element_index}] {rec.element_text} (confidence: {rec.confidence:.2f})")
+            else:
+                logger.info(f"  - 추천: 없음")
+            
+            logger.info("="*80)
+            
+            return json.dumps(output.dict(), ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Perceiver 실행 실패: {e}", exc_info=True)
+            
+            # 에러 응답
+            error_output = PerceiverOutput(
+                analysis=PageAnalysisResult(
+                    information_found=False,
+                    confidence=0.0,
+                    page_type='error_page',
+                    title='',
+                    summary=f'페이지 분석 실패: {str(e)}',
+                    visible_elements=[],
+                    keyword_matches={},
+                    recommended_action=None,
+                    analysis_warnings=[str(e)]
+                ),
+                execution_time=time.time() - start_time,
+                success=False,
+                error_message=str(e)
+            )
+            
+            return json.dumps(error_output.dict(), ensure_ascii=False, indent=2)
+    
+    def _capture_page(self, url: str) -> tuple:
+        """페이지 캡처"""
+        try:
+            return capture_screenshot_sync(url)
+        except ScreenshotCaptureError as e:
+            logger.error(f"스크린샷 캡처 실패: {e}")
+            raise
+    
+    def _parse_html(self, html_content: str, url: str) -> dict:
+        """HTML 파싱"""
+        try:
+            return self.html_parser.parse(html_content, base_url=url)
+        except HTMLParserError as e:
+            logger.error(f"HTML 파싱 실패: {e}")
+            # 최소한의 정보라도 반환
+            return {
+                'title': '',
+                'page_type': 'unknown',
+                'links': [],
+                'buttons': [],
+                'forms': [],
+                'headings': [],
+                'main_text': '',
+                'total_links': 0,
+                'total_buttons': 0,
+                'has_navigation': False,
+                'has_search': False,
+                'has_login': False
+            }
+    
+    def _analyze_with_vision(
+        self,
+        base64_image: str,
+        html_summary: dict,
+        query: str,
+        url: str
+    ) -> PageAnalysisResult:
+        """Vision 분석 (폴백 포함)"""
+        try:
+            return self.vision_analyzer.analyze(
+                base64_image=base64_image,
+                html_summary=html_summary,
+                query=query,
+                url=url
+            )
+        except VisionAnalyzerError as e:
+            logger.error(f"Vision 분석 실패, 폴백 사용: {e}")
+            return ResponseValidator.create_fallback_response(
+                url=url,
+                query=query,
+                html_summary=html_summary,
+                error_message=str(e)
+            )
 
 
-def _receive_domain_info(
-    primary_domain: str,
-    primary_uri: str,
-    alternatives: List[Dict[str, Any]],
-    user_query: str,
-    tool_context: Any  # ADK will inject context automatically
-) -> Dict[str, Any]:
-    """
-    도메인 분류 결과를 전달받아 출력하는 핸들러
-    """
-    print("\n" + "=" * 70)
-    print("✅ Multimodal Perceiver Agent가 받은 정보:")
-    print("=" * 70)
-    print(f"📍 Primary Domain: {primary_domain}")
-    print(f"🔗 Primary URI: {primary_uri}")
-    print(f"💬 User Query: {user_query}")
-    print(f"\n📋 Alternatives ({len(alternatives)}개):")
-
-    for i, alt in enumerate(alternatives, 1):
-        # alt가 str일 경우 get 메서드가 없으므로, dict 타입일 때만 get 사용
-        if isinstance(alt, dict):
-            print(f"\n  [{i}] {alt.get('domain', 'N/A')}")
-            print(f"      URI: {alt.get('uri', 'N/A')}")
-            print(f"      Score: {alt.get('score', 0)}")
-            print(f"      Priority: {alt.get('priority', 'N/A')}")
-            print(f"      Confidence: {alt.get('confidence', 'N/A')}")
-            if alt.get('condition'):
-                print(f"      조건: {alt['condition']}")
-            if alt.get('reasoning'):
-                print(f"      사유: {alt['reasoning']}")
-        else:
-            # str 등 dict가 아닌 타입이면 문자열로 출력
-            print(f"\n  [{i}] {str(alt)}")
-
-    print("=" * 70 + "\n")
-
-    # 도메인 정보 세션 상태에 저장
-    tool_context.state["received_primary"] = {
-        "domain": primary_domain,
-        "uri": primary_uri,
-    }
-    tool_context.state["received_alternatives_count"] = len(alternatives)
-
-    # 분석 결과 반환
-    return {
-        "status": "received_and_analyzed",
-        "primary": {"domain": primary_domain, "uri": primary_uri},
-        "alternatives_count": len(alternatives),
-        "next_action": f"{primary_uri}로 이동하여 '{user_query}' 관련 정보 탐색 필요",
-        "message": f"✅ {primary_domain} 도메인 정보를 성공적으로 수신하고 분석했습니다."
-    }
-
-
-# FunctionTool로 래핑 (parameters 포함)
-receive_domain_info_tool = FunctionTool(
-    func=_receive_domain_info
-)
-
-# Agent 생성
+# AgentTool이 사용할 Agent 인스턴스
 Multimodal_Perceiver_Agent = Agent(
-    name="Multimodal_Perceiver_Agent",
-    model=LiteLlm(model=MODEL_O3_MINI),
-    description=DESCRIPTION,
-    instruction=INSTRUCTION,
-    tools=[receive_domain_info_tool],
-    output_key="Multimodal_Perceiver_Output",
+    name="MultimodalPerceiver",
+    model=LiteLlm(model=constants.MODEL_GPT_4O),
+    description=PERCEIVER_DESCRIPTION,
+    instruction=PERCEIVER_INSTRUCTION
 )

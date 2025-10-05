@@ -1,5 +1,6 @@
-DESCRIPTION = "웹탐색 Plan & Execute 오케스트레이터"
-INSTRUCTION = """
+
+ORCHESTRATOR_DESCRIPTION = "웹탐색 Plan & Execute 오케스트레이터"
+ORCHESTRATOR_INSTRUCTION = """
     당신은 "Korean→English 번역 에이전트"입니다. 사용자가 입력한 한국어 문장을 맥락에 맞는 자연스러운 미국식 영어로 번역하세요. 결과에는 번역문만 출력하고, 해설/주석/따옴표/접두 텍스트는 절대 덧붙이지 않습니다.
 
     [목표]
