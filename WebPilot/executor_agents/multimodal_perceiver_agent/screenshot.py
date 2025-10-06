@@ -6,7 +6,7 @@ from pathlib import Path
 import logging
 import asyncio
 from typing import Optional, Tuple
-from WebPilot.constants import constants  # 변경
+from WebPilot.constants import constants
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,19 @@ class ScreenshotCapture:
         self.retry_delay = constants.PERCEIVER_RETRY_DELAY
         self.save_screenshots = constants.PERCEIVER_SAVE_SCREENSHOTS
         self.screenshot_dir = constants.PERCEIVER_SCREENSHOT_DIR
+        
+        # 파일 저장 활성화 시에만 디렉토리 생성 시도
         if self.save_screenshots:
-            screenshot_dir = Path(self.screenshot_dir)
-            screenshot_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"스크린샷 저장 활성화: {screenshot_dir.absolute()}")
+            try:
+                screenshot_dir = Path(self.screenshot_dir)
+                screenshot_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"스크린샷 저장 활성화: {screenshot_dir.absolute()}")
+            except Exception as e:
+                logger.warning(f"스크린샷 디렉토리 생성 실패 (저장 비활성화): {e}")
+                self.save_screenshots = False  # 실패 시 저장 비활성화
+        else:
+            logger.info("스크린샷 저장 비활성화 (메모리만 사용)")
+    
     async def capture(self, url: str, save_path: Optional[str] = None) -> Tuple[str, str]:
         """
         URL의 스크린샷 및 HTML 캡처 (재시도 포함)
@@ -106,7 +115,7 @@ class ScreenshotCapture:
                 # HTML 추출
                 html_content = await page.content()
                 
-                # 스크린샷 캡처
+                # 스크린샷 캡처 (메모리)
                 screenshot_bytes = await page.screenshot(
                     full_page=True,
                     type='png'
@@ -115,10 +124,14 @@ class ScreenshotCapture:
                 # Base64 인코딩
                 base64_image = base64.b64encode(screenshot_bytes).decode('utf-8')
                 
-                # 파일 저장 (디버깅용)
-                if save_path or self.save_screenshots:
-                    actual_path = save_path or self._generate_screenshot_path(url)
-                    self._save_screenshot(screenshot_bytes, actual_path)
+                # 파일 저장 (활성화된 경우에만 시도)
+                if self.save_screenshots and (save_path or True):
+                    try:
+                        actual_path = save_path or self._generate_screenshot_path(url)
+                        self._save_screenshot(screenshot_bytes, actual_path)
+                    except Exception as e:
+                        # 저장 실패해도 계속 진행 (메모리의 base64는 유지)
+                        logger.warning(f"스크린샷 파일 저장 실패 (계속 진행): {e}")
                 
                 return base64_image, html_content
                 
@@ -172,13 +185,15 @@ class ScreenshotCapture:
         return str(screenshot_dir / filename)
     
     def _save_screenshot(self, screenshot_bytes: bytes, path: str):
-        """스크린샷 파일 저장"""
+        """스크린샷 파일 저장 (실패해도 예외 던지지 않음)"""
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             with open(path, 'wb') as f:
                 f.write(screenshot_bytes)
             logger.info(f"스크린샷 저장: {path}")
         except Exception as e:
+            # ADK Web 환경에서 권한 오류 발생 가능
+            # 오류를 던지지 않고 로깅만 (메모리의 base64는 유효)
             logger.warning(f"스크린샷 저장 실패 (무시): {e}")
 
 # 동기 래퍼

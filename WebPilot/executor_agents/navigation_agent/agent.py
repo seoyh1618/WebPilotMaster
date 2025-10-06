@@ -7,10 +7,13 @@ from .prompt import NAVIGATION_DESCRIPTION, NAVIGATION_INSTRUCTION
 from .state import NavigationInput, NavigationOutput, NavigationResult
 from .playwright_executor import execute_actions_sync, PlaywrightExecutorError
 from WebPilot.constants import constants
+from WebPilot.constants.constants import setup_logging
 import json
 import logging
 import time
 
+# 로깅 설정 적용
+setup_logging()
 logger = logging.getLogger(__name__)
 
 class NavigationAgentClass:
@@ -39,6 +42,9 @@ class NavigationAgentClass:
         start_time = time.time()
         
         try:
+            if isinstance(input_text, dict):
+                input_text = json.dumps(input_text, ensure_ascii=False)
+        
             # 입력 파싱
             input_data = json.loads(input_text)
             nav_input = NavigationInput(**input_data)

@@ -4,7 +4,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from .prompt import PLANNER_DESCRIPTION, PLANNER_INSTRUCTION, REPLAN_INSTRUCTION
 from .state import ExecutionPlan, ExecutionStep, StepParameters, ReplanRequest
-from WebPilot.constants.constants import MODEL_O3_MINI
+from WebPilot.constants.constants import MODEL_O3_MINI, setup_logging
 import json
 import re
 import logging
@@ -12,6 +12,8 @@ from typing import Dict, Any
 from datetime import datetime
 import uuid
 
+# 로깅 설정 적용
+setup_logging()
 logger = logging.getLogger(__name__)
 
 class PlannerAgentClass:

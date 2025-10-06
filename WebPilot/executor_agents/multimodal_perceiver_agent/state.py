@@ -47,18 +47,19 @@ class PageAnalysisResult(BaseModel):
     # 정보 발견 여부
     information_found: bool
     extracted_info: Optional[str] = None
-    confidence: float = 0.0
-    
+    confidence: float
+      
     # 페이지 구조 (관찰 사실)
-    page_type: str = "general"  # main_page, list_page, detail_page, form_page, login_page
-    title: str = ""
-    summary: str = ""  # 페이지 요약 설명
-    
+    page_type: str
+    title: str
+    summary: str
+
     # 보이는 요소들 (객관적 사실)
-    visible_elements: List[ElementInfo] = Field(default_factory=list)
-    
+    visible_elements: List[ElementInfo]
+  
     # 키워드 검색 결과
-    keyword_matches: Dict[str, List[str]] = Field(default_factory=dict)
+    #keyword_matches: Dict[str, str] = Field(default_factory=dict)
+
     recommended_action: Optional[RecommendedAction] = None
     
     has_navigation_menu: bool = False

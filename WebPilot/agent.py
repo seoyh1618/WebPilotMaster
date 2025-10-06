@@ -1,39 +1,51 @@
 # WebPilot/root_agent.py
 
+from google.adk.agents import Agent 
 from google.adk.tools.agent_tool import AgentTool
-from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from dotenv import load_dotenv
-import logging
-import json
-from typing import Dict, Any, Optional
-
+from WebPilot.constants import constants
 from WebPilot.prompt import ORCHESTRATOR_DESCRIPTION, ORCHESTRATOR_INSTRUCTION
-from WebPilot.constants.constants import MODEL_O3_MINI
+import json
+import logging
 
-# Agents
-from WebPilot.planner_agents.Planner_Agent.agent import Planner_Agent
-from WebPilot.planner_agents.Domain_Priority_Classifier_Agent.agent import Domain_Priority_Classifier_Agent
-from WebPilot.executor_agents.multimodal_perceiver_agent.agent import Multimodal_Perceiver_Agent
-from WebPilot.executor_agents.navigation_agent.agent import Navigation_Agent
-
-load_dotenv()
 logger = logging.getLogger(__name__)
 
-# LLM 클라이언트 초기화
-LLM_CLIENT = LiteLlm(model=MODEL_O3_MINI)
+# 기존 에이전트
+from WebPilot.planner_agents.Planner_Agent.agent import Planner_Agent, PlannerAgentClass
+from WebPilot.planner_agents.Domain_Priority_Classifier_Agent.agent import Domain_Priority_Classifier_Agent, DomainPriorityClassifierAgentClass
+from WebPilot.executor_agents.multimodal_perceiver_agent.agent import Multimodal_Perceiver_Agent, MultilmodalPerceiverAgentClass
+from WebPilot.executor_agents.navigation_agent.agent import Navigation_Agent, NavigationAgentClass
+from WebPilot.executor_agents.document_handler_agent.agent import Document_Handler_Agent, DocumentHandlerAgentClass
+from WebPilot.executor_agents.answer_creation_agent.agent import Answer_Creation_Agent, AnswerCreationAgentClass
 
-# Agent Tools 생성
-planner_tool = AgentTool(agent=Planner_Agent)
-domain_classifier_tool = AgentTool(agent=Domain_Priority_Classifier_Agent)
-perceiver_tool = AgentTool(agent=Multimodal_Perceiver_Agent)
-navigation_tool = AgentTool(agent=Navigation_Agent)
+# ⭐ 새 에이전트
+from WebPilot.executor_agents.crawler_agent.agent import Crawler_Agent, CrawlerAgentClass
+from WebPilot.executor_agents.filter_based_page_handler_agent.agent import (
+    Filter_Based_Page_Handler_Agent,
+    FilterBasedPageHandlerAgentClass
+)
 
-# TODO: 향후 추가 예정
-# document_handler_tool = AgentTool(agent=Document_Handler_Agent)
-# answer_creation_tool = AgentTool(agent=Answer_Creation_Agent)
+# AgentTool 래퍼
+class WebPilotAgentTool(AgentTool):
+    def __init__(self, agent: Agent):
+        super().__init__(agent=agent)
 
-# Orchestrator Agent 생성
+# Tool 생성
+planner_tool = WebPilotAgentTool(agent=Planner_Agent)
+domain_classifier_tool = WebPilotAgentTool(agent=Domain_Priority_Classifier_Agent)
+perceiver_tool = WebPilotAgentTool(agent=Multimodal_Perceiver_Agent)
+navigation_tool = WebPilotAgentTool(agent=Navigation_Agent)
+document_handler_tool = WebPilotAgentTool(agent=Document_Handler_Agent)
+answer_creation_tool = WebPilotAgentTool(agent=Answer_Creation_Agent)
+
+# ⭐ 새 Tool
+crawler_tool = WebPilotAgentTool(agent=Crawler_Agent)
+filter_handler_tool = WebPilotAgentTool(agent=Filter_Based_Page_Handler_Agent)
+
+# LLM 클라이언트
+LLM_CLIENT = LiteLlm(model=constants.MODEL_O3_MINI)
+
+# Orchestrator Agent
 root_agent = Agent(
     name="WebPilot_Orchestrator",
     model=LLM_CLIENT,
@@ -43,488 +55,394 @@ root_agent = Agent(
         planner_tool,
         domain_classifier_tool,
         perceiver_tool,
+        crawler_tool,                    # ⭐ 추가
+        filter_handler_tool,             # ⭐ 추가
         navigation_tool,
+        document_handler_tool,
+        answer_creation_tool,
     ],
     output_key="orchestrator_result"
 )
 
-logger.info("="*80)
-logger.info("WebPilot Orchestrator Agent 초기화 완료")
-logger.info(f"등록된 도구: {len(root_agent.tools)}개")
-logger.info("  - Planner: 실행 계획 생성 및 재계획")
-logger.info("  - Domain Classifier: 도메인 우선순위 분류")
-logger.info("  - Perceiver: 웹페이지 관찰 및 액션 추천")
-logger.info("  - Navigator: 웹 액션 실행")
-logger.info("="*80)
-
-
-# ============================================
-# Orchestrator 실행 로직 (추가)
-# ============================================
-
+# Runner 클래스
 class OrchestratorRunner:
-    """Orchestrator 실행 및 상태 관리"""
+    """Orchestrator 실행 클래스"""
     
     def __init__(self):
+        # 기존 에이전트
+        self.planner = PlannerAgentClass()
+        self.domain_classifier = DomainPriorityClassifierAgentClass()
+        self.perceiver = MultilmodalPerceiverAgentClass()
+        self.navigation = NavigationAgentClass()
+        self.document_handler = DocumentHandlerAgentClass()
+        self.answer_creation = AnswerCreationAgentClass()
+        
+        # ⭐ 새 에이전트
+        self.crawler = CrawlerAgentClass()
+        self.filter_handler = FilterBasedPageHandlerAgentClass()
+        
+        # 상태
         self.state = {
             "query": "",
             "execution_plan": None,
             "step_results": {},
             "visited_urls": [],
             "current_url": "",
+            "collected_information": [],
             "attempt_count": 0,
             "max_attempts": 5,
-            "domain_info": None
+            "replan_count": 0,
+            "max_replan": 3
         }
-    
-    def run(self, query: str) -> Dict[str, Any]:
-        """
-        사용자 질의 실행
         
-        Args:
-            query: 사용자 질의
-            
-        Returns:
-            최종 결과
-        """
-        logger.info("="*80)
-        logger.info("WebPilot 실행 시작")
-        logger.info(f"질의: {query}")
-        logger.info("="*80)
+        logger.info("Orchestrator Runner 초기화 완료")
+    
+    def run(self, query: str) -> dict:
+        """메인 실행"""
+        
+        logger.info(f"="*80)
+        logger.info(f"사용자 질의: {query}")
+        logger.info(f"="*80)
         
         self.state["query"] = query
         
         try:
-            # Step 1: 초기 계획 생성
-            logger.info("\n[Step 1] 초기 계획 생성")
-            plan = self._create_initial_plan(query)
+            # 1. 초기 계획 생성
+            plan = self._generate_initial_plan(query)
             
-            if not plan or not plan.get("steps"):
-                return self._create_error_result("초기 계획 생성 실패")
+            if not plan:
+                return {
+                    "status": "error",
+                    "error_message": "초기 계획 생성 실패"
+                }
             
-            self.state["execution_plan"] = plan
-            
-            # Step 2: 계획 실행
-            logger.info("\n[Step 2] 계획 실행 시작")
+            # 2. 계획 실행
             result = self._execute_plan(plan)
             
             return result
             
         except Exception as e:
             logger.error(f"Orchestrator 실행 실패: {e}", exc_info=True)
-            return self._create_error_result(str(e))
+            return {
+                "status": "error",
+                "error_message": str(e)
+            }
     
-    def _create_initial_plan(self, query: str) -> Optional[Dict]:
+    def _generate_initial_plan(self, query: str) -> dict:
         """초기 계획 생성"""
+        
+        logger.info("초기 계획 생성 중...")
+        
         try:
-            planner_input = json.dumps({"query": query})
-            planner_output = planner_tool.agent.run(planner_input)
+            planner_input = json.dumps({"query": query}, ensure_ascii=False)
+            plan_json = self.planner.run(planner_input)
+            plan = json.loads(plan_json)
             
-            output_dict = json.loads(planner_output)
-            plan = output_dict.get("plan")
+            self.state["execution_plan"] = plan
             
-            logger.info(f"  ✓ 계획 생성 완료: {len(plan.get('steps', []))}개 step")
+            logger.info(f"✓ 초기 계획 생성: {len(plan.get('steps', []))}개 단계")
             
             return plan
             
         except Exception as e:
-            logger.error(f"  ✗ 계획 생성 실패: {e}")
+            logger.error(f"초기 계획 생성 실패: {e}")
             return None
     
-    def _execute_plan(self, plan: Dict) -> Dict[str, Any]:
+    def _execute_plan(self, plan: dict) -> dict:
         """계획 실행"""
+        
         steps = plan.get("steps", [])
         
         for step in steps:
             step_id = step["step_id"]
             agent_name = step["agent"]
             
-            logger.info(f"\n  [Step {step_id}] {step['description']}")
-            logger.info(f"    Agent: {agent_name}")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Step {step_id}: {agent_name}")
+            logger.info(f"{'='*60}")
             
             # Dependencies 확인
             if not self._check_dependencies(step):
-                logger.error(f"    ✗ Dependencies 미완료")
+                logger.warning(f"Step {step_id}: Dependencies 미완료, 스킵")
                 continue
             
-            # 파라미터 템플릿 치환
+            # 파라미터 치환
             params = self._substitute_params(step["params"])
             
-            # Agent 실행
+            # 에이전트 실행
             result = self._execute_agent(agent_name, params)
             
-            if not result:
-                logger.error(f"    ✗ Agent 실행 실패")
-                continue
-            
             # 결과 저장
-            self.state["step_results"][step_id] = result
+            self.state["step_results"][f"step_{step_id}"] = result
+            step["result"] = result
+            step["status"] = "completed"
             
-            # Agent별 후처리
-            if agent_name == "domain_classifier":
-                self._handle_domain_classifier_result(result)
+            # 결과 분석 및 재계획
+            should_replan, replan_reason = self._analyze_result(agent_name, result)
             
-            elif agent_name == "perceiver":
-                if self._handle_perceiver_result(result):
-                    # 정보 발견, 종료
-                    return self._create_success_result(result)
+            if should_replan:
+                logger.info(f"재계획 트리거: {replan_reason}")
+                
+                new_plan = self._replan(replan_reason, result)
+                
+                if new_plan and new_plan.get("steps"):
+                    # 새 계획 실행
+                    return self._execute_plan(new_plan)
                 else:
-                    # 정보 없음, 재계획
-                    replan_result = self._replan()
-                    if replan_result:
-                        return replan_result
+                    # 재계획 실패, 수집된 정보로 답변
+                    if self.state["collected_information"]:
+                        return self._force_answer_creation()
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": "재계획 실패 및 수집된 정보 없음"
+                        }
             
-            elif agent_name == "navigation_agent":
-                self._handle_navigation_result(result)
+            # Answer Creation이면 종료
+            if agent_name == "answer_creation":
+                return {
+                    "status": "success",
+                    "answer": result.get("answer", ""),
+                    "sources": result.get("sources", []),
+                    "attempts": self.state["attempt_count"],
+                    "replan_count": self.state["replan_count"]
+                }
         
-        # 모든 step 완료했지만 정보 못 찾음
-        return self._create_error_result("정보를 찾을 수 없습니다")
+        # 모든 step 완료했는데 답변 없으면
+        if self.state["collected_information"]:
+            return self._force_answer_creation()
+        else:
+            return {
+                "status": "error",
+                "error_message": "계획 완료했으나 답변 생성 안됨"
+            }
     
-    def _check_dependencies(self, step: Dict) -> bool:
-        """Dependencies 확인"""
-        dependencies = step.get("dependencies", [])
+    def _execute_agent(self, agent_name: str, params: dict):
+        """에이전트 실행"""
         
-        for dep_id in dependencies:
-            if dep_id not in self.state["step_results"]:
-                return False
+        agent_input = json.dumps(params, ensure_ascii=False)
         
-        return True
-    
-    def _substitute_params(self, params: Dict) -> Dict:
-        """파라미터 템플릿 치환"""
-        import re
-        
-        params_str = json.dumps(params)
-        
-        # {{step_N.result.key}} 패턴 찾기
-        pattern = r'\{\{step_(\d+)\.result\.([^\}]+)\}\}'
-        
-        def replace_template(match):
-            step_id = int(match.group(1))
-            key_path = match.group(2)
-            
-            if step_id not in self.state["step_results"]:
-                logger.warning(f"      템플릿 치환 실패: step_{step_id} 결과 없음")
-                return match.group(0)
-            
-            # 중첩된 키 접근
-            value = self.state["step_results"][step_id]
-            for key in key_path.split('.'):
-                if isinstance(value, dict):
-                    value = value.get(key)
-                else:
-                    logger.warning(f"      템플릿 치환 실패: {key_path}")
-                    return match.group(0)
-            
-            return str(value) if value is not None else match.group(0)
-        
-        params_str = re.sub(pattern, replace_template, params_str)
-        
-        return json.loads(params_str)
-    
-    def _execute_agent(self, agent_name: str, params: Dict) -> Optional[Dict]:
-        """Agent 실행"""
         try:
-            agent_input = json.dumps(params, ensure_ascii=False)
+            if agent_name == "planner":
+                output = self.planner.run(agent_input)
             
-            if agent_name == "domain_classifier":
-                output = domain_classifier_tool.agent.run(agent_input)
+            elif agent_name == "domain_classifier":
+                output = self.domain_classifier.run(agent_input)
             
             elif agent_name == "perceiver":
-                output = perceiver_tool.agent.run(agent_input)
+                output = self.perceiver.run(agent_input)
+            
+            # ⭐ 새 에이전트
+            elif agent_name == "crawler":
+                output = self.crawler.run(agent_input)
+            
+            elif agent_name == "filter_based_page_handler":
+                output = self.filter_handler.run(agent_input)
             
             elif agent_name == "navigation_agent":
-                output = navigation_tool.agent.run(agent_input)
+                output = self.navigation.run(agent_input)
+            
+            elif agent_name == "document_handler":
+                output = self.document_handler.run(agent_input)
+            
+            elif agent_name == "answer_creation":
+                output = self.answer_creation.run(agent_input)
             
             else:
-                logger.error(f"      알 수 없는 agent: {agent_name}")
-                return None
+                raise ValueError(f"Unknown agent: {agent_name}")
             
             result = json.loads(output)
             
-            logger.info(f"    ✓ 실행 완료")
+            logger.info(f"✓ {agent_name} 실행 완료")
             
             return result
             
         except Exception as e:
-            logger.error(f"    ✗ 실행 실패: {e}")
-            return None
+            logger.error(f"❌ {agent_name} 실행 실패: {e}")
+            return {"success": False, "error_message": str(e)}
     
-    def _handle_domain_classifier_result(self, result: Dict):
-        """Domain Classifier 결과 처리"""
-        result_data = result.get("result", {})
-        primary = result_data.get("primary")
-        alternatives = result_data.get("alternatives", [])
+    def _analyze_result(self, agent_name: str, result: dict) -> tuple:
+        """결과 분석하여 재계획 필요 여부 판단"""
         
-        if primary:
-            logger.info(f"      선택된 도메인: {primary.get('domain')} ({primary.get('uri')})")
-            logger.info(f"      Score: {primary.get('score')}, Priority: {primary.get('priority')}")
-            logger.info(f"      Alternative 도메인: {len(alternatives)}개")
+        should_replan = False
+        reason = ""
+        
+        if agent_name == "perceiver":
+            analysis = result.get("analysis", {})
+            page_type = analysis.get("page_type", "")
+            information_found = analysis.get("information_found", False)
             
-            # 전체 도메인 정보 저장 (순차 탐색용)
-            self.state["domain_info"] = result_data
-            self.state["current_url"] = primary.get('uri')
-            self.state["current_domain_index"] = 0  # primary부터 시작
-            self.state["all_domains"] = [primary] + alternatives
+            # 리스트 페이지 감지
+            if page_type == "list_page":
+                should_replan = True
+                reason = "list_page_detected"
+            
+            # 필터 페이지 감지
+            elif page_type == "filter_page":
+                should_replan = True
+                reason = "filter_page_detected"
+            
+            # 정보 없음
+            elif not information_found:
+                should_replan = True
+                reason = "no_information"
+        
+        elif agent_name == "crawler":
+            # Crawler 결과에서 정보 수집
+            most_relevant = result.get("most_relevant_analysis")
+            
+            if most_relevant and most_relevant.get("information_found"):
+                self.state["collected_information"].append({
+                    "source": "crawler",
+                    "content": most_relevant.get("extracted_info", ""),
+                    "confidence": most_relevant.get("confidence", 0.0)
+                })
+        
+        elif agent_name == "filter_based_page_handler":
+            # FilterHandler 결과에서 정보 수집
+            if result.get("results_found"):
+                self.state["collected_information"].append({
+                    "source": "filter_handler",
+                    "result_rows": result.get("result_rows", []),
+                    "total_results": result.get("total_results", 0)
+                })
+            
+            # 필터 페이지 아니면 재처리
+            elif not result.get("filter_info", {}).get("is_filter_page"):
+                should_replan = True
+                reason = "not_filter_page"
+        
+        elif agent_name == "navigation_agent":
+            # SAP 페이지로 이동했는지 확인
+            final_url = result.get("final_url", "")
+            
+            if "sap" in final_url.lower():
+                should_replan = True
+                reason = "sap_page_detected"
+            
+            # URL 저장
+            if final_url:
+                self.state["current_url"] = final_url
+                if final_url not in self.state["visited_urls"]:
+                    self.state["visited_urls"].append(final_url)
+        
+        return should_replan, reason
     
-    def _handle_perceiver_result(self, result: Dict) -> bool:
-        """
-        Perceiver 결과 처리
-        
-        Returns:
-            True: 정보 발견 (종료)
-            False: 정보 없음 (재계획 필요)
-        """
-        analysis = result.get("analysis", {})
-        information_found = analysis.get("information_found", False)
-        
-        if information_found:
-            logger.info(f"      ✓ 정보 발견!")
-            extracted_info = analysis.get("extracted_info", "")
-            logger.info(f"      내용: {extracted_info[:100]}...")
-            return True
-        
-        else:
-            logger.info(f"      정보 없음")
-            
-            recommended_action = analysis.get("recommended_action")
-            
-            if recommended_action and recommended_action.get("should_click"):
-                confidence = recommended_action.get("confidence", 0)
-                element_text = recommended_action.get("element_text", "")
-                
-                logger.info(f"      추천: {element_text} (confidence: {confidence:.2f})")
-            else:
-                logger.info(f"      추천 없음")
-            
-            return False
-    
-    def _handle_navigation_result(self, result: Dict):
-        """Navigation 결과 처리"""
-        final_url = result.get("final_url", "")
-        success = result.get("success", False)
-        
-        if success:
-            logger.info(f"      ✓ Navigation 성공")
-            logger.info(f"      최종 URL: {final_url}")
-            
-            self.state["current_url"] = final_url
-            self.state["visited_urls"].append(final_url)
-        else:
-            logger.error(f"      ✗ Navigation 실패")
-    
-    def _replan(self) -> Optional[Dict[str, Any]]:
+    def _replan(self, reason: str, last_result: dict) -> dict:
         """재계획"""
-        self.state["attempt_count"] += 1
         
-        logger.info(f"\n[재계획] 시도 {self.state['attempt_count']}/{self.state['max_attempts']}")
+        self.state["replan_count"] += 1
         
-        # 최대 시도 횟수 확인
-        if self.state["attempt_count"] >= self.state["max_attempts"]:
-            logger.warning("  최대 시도 횟수 초과")
-            return self._create_error_result("최대 시도 횟수를 초과했습니다")
+        if self.state["replan_count"] > self.state["max_replan"]:
+            logger.warning("최대 재계획 횟수 초과")
+            return None
         
-        # 최근 Perceiver 결과 찾기
-        last_perceiver_result = None
-        for step_id in sorted(self.state["step_results"].keys(), reverse=True):
-            result = self.state["step_results"][step_id]
-            if "analysis" in result:
-                last_perceiver_result = result
-                break
+        logger.info(f"재계획 {self.state['replan_count']}회: {reason}")
         
-        if not last_perceiver_result:
-            logger.error("  Perceiver 결과 없음")
-            return self._create_error_result("Perceiver 결과 없음")
-        
-        # 재계획 요청 생성
         replan_request = {
-            "replan_request": {
-                "replan": True,
-                "original_query": self.state["query"],
-                "current_attempt": self.state["attempt_count"],
-                "max_attempts": self.state["max_attempts"],
-                "perceiver_result": last_perceiver_result,
-                "visited_urls": self.state["visited_urls"],
-                "current_url": self.state["current_url"],
-                "domain_info": self.state.get("domain_info")  # ⭐ 전체 도메인 정보 전달
-            }
+            "replan": True,
+            "original_query": self.state["query"],
+            "reason": reason,
+            "last_result": last_result,
+            "current_url": self.state["current_url"],
+            "visited_urls": self.state["visited_urls"],
+            "collected_information": self.state["collected_information"]
         }
         
-        # Planner 재호출
         try:
             planner_input = json.dumps(replan_request, ensure_ascii=False)
-            planner_output = planner_tool.agent.run(planner_input)
+            plan_json = self.planner.run(planner_input)
+            new_plan = json.loads(plan_json)
             
-            output_dict = json.loads(planner_output)
-            new_plan = output_dict.get("plan")
+            logger.info(f"✓ 재계획 완료: {len(new_plan.get('steps', []))}개 단계")
             
-            if not new_plan or not new_plan.get("steps"):
-                logger.warning("  재계획 생성 실패 또는 steps 없음 (종료)")
-                return self._create_error_result(new_plan.get("reasoning", "정보를 찾을 수 없습니다"))
-            
-            logger.info(f"  ✓ 재계획 생성 완료: {len(new_plan['steps'])}개 step")
-            
-            # 새 계획 실행
-            return self._execute_plan(new_plan)
+            return new_plan
             
         except Exception as e:
-            logger.error(f"  ✗ 재계획 실패: {e}")
-            return self._create_error_result(f"재계획 실패: {e}") 
-    def _create_success_result(self, perceiver_result: Dict) -> Dict[str, Any]:
-        """성공 결과 생성"""
-        analysis = perceiver_result.get("analysis", {})
-        
-        return {
-            "status": "success",
-            "answer": analysis.get("extracted_info", ""),
-            "confidence": analysis.get("confidence", 0.0),
-            "source_url": self.state["current_url"],
-            "attempts": self.state["attempt_count"],
-            "visited_urls": self.state["visited_urls"]
-        }
+            logger.error(f"재계획 실패: {e}")
+            return None
     
-    def _create_error_result(self, message: str) -> Dict[str, Any]:
-        """에러 결과 생성"""
-        return {
-            "status": "error",
-            "error_message": message,
-            "attempts": self.state["attempt_count"],
-            "visited_urls": self.state["visited_urls"]
-        }
-
-    def _handle_perceiver_result(self, result: Dict) -> bool:
-        """
-        Perceiver 결과 처리
+    def _force_answer_creation(self) -> dict:
+        """수집된 정보로 강제 답변 생성"""
         
-        Returns:
-            True: 정보 발견 또는 파일 발견 (종료)
-            False: 정보 없음 (재계획 필요)
-        """
-        analysis = result.get("analysis", {})
-        information_found = analysis.get("information_found", False)
+        logger.info("수집된 정보로 강제 답변 생성")
         
-        if information_found:
-            logger.info(f"      ✓ 정보 발견!")
-            extracted_info = analysis.get("extracted_info", "")
-            logger.info(f"      내용: {extracted_info[:100]}...")
-            return True
-        
-        else:
-            logger.info(f"      정보 없음")
-            
-            recommended_action = analysis.get("recommended_action")
-            
-            if not recommended_action:
-                logger.info(f"      추천 없음")
-                return False
-            
-            # 파일 다운로드 감지
-            if recommended_action.get("should_download"):
-                file_info = recommended_action.get("file_info", {})
-                logger.info(f"      📎 파일 발견: {file_info.get('file_name')}")
-                logger.info(f"      URL: {file_info.get('file_url')}")
-                
-                # TODO: Document Handler로 파일 처리
-                # 현재는 일단 파일을 찾았다고 간주하고 종료
-                logger.warning("      Document Handler 미구현, 파일 URL만 반환")
-                
-                # 임시로 파일 URL을 정보로 저장
-                self.state["found_file"] = file_info
-                return True  # 파일을 찾았으니 일단 종료
-            
-            # 일반 클릭 추천
-            if recommended_action.get("should_click"):
-                confidence = recommended_action.get("confidence", 0)
-                element_text = recommended_action.get("element_text", "")
-                
-                logger.info(f"      추천: {element_text} (confidence: {confidence:.2f})")
-                
-                # 드롭다운 감지
-                if recommended_action.get("requires_submenu_selection"):
-                    visible_submenus = recommended_action.get("visible_submenus", [])
-                    recommended_submenu = recommended_action.get("recommended_submenu_index")
-                    
-                    if visible_submenus and recommended_submenu is not None:
-                        submenu = visible_submenus[recommended_submenu]
-                        logger.info(f"      드롭다운: {element_text} > {submenu.get('text')}")
-            
-            return False
-    
-    def _create_success_result(self, perceiver_result: Dict) -> Dict[str, Any]:
-        """성공 결과 생성 (파일 지원)"""
-        analysis = perceiver_result.get("analysis", {})
-        
-        # 파일을 찾은 경우
-        if self.state.get("found_file"):
-            file_info = self.state["found_file"]
-            return {
-                "status": "success",
-                "answer": f"관련 파일을 찾았습니다: {file_info.get('file_name')}",
-                "file_url": file_info.get('file_url'),
-                "file_type": file_info.get('file_type'),
-                "confidence": file_info.get('confidence', 0.0),
-                "source_url": self.state["current_url"],
-                "attempts": self.state["attempt_count"],
-                "visited_urls": self.state["visited_urls"],
-                "note": "Document Handler 구현 후 파일 내용을 분석할 예정입니다."
+        try:
+            answer_input = {
+                "query": self.state["query"],
+                "collected_information": self.state["collected_information"],
+                "trigger_final_answer": True
             }
+            
+            answer_json = self.answer_creation.run(json.dumps(answer_input, ensure_ascii=False))
+            answer_result = json.loads(answer_json)
+            
+            return {
+                "status": "partial_success",
+                "answer": answer_result.get("answer", ""),
+                "sources": answer_result.get("sources", []),
+                "note": "일부 정보만 수집됨"
+            }
+            
+        except Exception as e:
+            logger.error(f"강제 답변 생성 실패: {e}")
+            return {
+                "status": "error",
+                "error_message": "답변 생성 실패"
+            }
+    
+    def _check_dependencies(self, step: dict) -> bool:
+        """Dependencies 확인"""
+        deps = step.get("dependencies", [])
         
-        # 일반적인 정보 발견
-        return {
-            "status": "success",
-            "answer": analysis.get("extracted_info", ""),
-            "confidence": analysis.get("confidence", 0.0),
-            "source_url": self.state["current_url"],
-            "attempts": self.state["attempt_count"],
-            "visited_urls": self.state["visited_urls"]
-        }
+        for dep_id in deps:
+            step_key = f"step_{dep_id}"
+            if step_key not in self.state["step_results"]:
+                return False
+        
+        return True
+    
+    def _substitute_params(self, params: dict) -> dict:
+        """파라미터 템플릿 치환"""
+        
+        def substitute_value(value):
+            if isinstance(value, str) and "{{" in value and "}}" in value:
+                # {{step_N.result.key}} 형식
+                import re
+                pattern = r'\{\{([^}]+)\}\}'
+                matches = re.findall(pattern, value)
+                
+                for match in matches:
+                    parts = match.split('.')
+                    
+                    if parts[0].startswith("step_"):
+                        step_key = parts[0]
+                        result = self.state["step_results"].get(step_key, {})
+                        
+                        # 나머지 경로 탐색
+                        for part in parts[1:]:
+                            if isinstance(result, dict):
+                                result = result.get(part, "")
+                            else:
+                                result = ""
+                                break
+                        
+                        value = value.replace(f"{{{{{match}}}}}", str(result))
+            
+            elif isinstance(value, dict):
+                return {k: substitute_value(v) for k, v in value.items()}
+            
+            elif isinstance(value, list):
+                return [substitute_value(item) for item in value]
+            
+            return value
+        
+        return substitute_value(params)
 
-# ============================================
-# 전역 Orchestrator Runner 인스턴스
-# ============================================
 
+# 전역 인스턴스
 orchestrator_runner = OrchestratorRunner()
 
-
-# ============================================
-# 간편 실행 함수
-# ============================================
-
-def run_webpilot(query: str) -> Dict[str, Any]:
-    """
-    WebPilot 실행
-    
-    Args:
-        query: 사용자 질의
-        
-    Returns:
-        실행 결과
-    """
-    runner = OrchestratorRunner()
-    return runner.run(query)
-
-
-# ============================================
-# 테스트 코드
-# ============================================
-
-if __name__ == "__main__":
-    # 로깅 설정
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # 테스트 실행
-    test_query = "일반대학원 사물함 신청 방법 알려줘"
-    
-    print("\n" + "="*80)
-    print(f"WebPilot 테스트: {test_query}")
-    print("="*80 + "\n")
-    
-    result = run_webpilot(test_query)
-    
-    print("\n" + "="*80)
-    print("최종 결과:")
-    print("="*80)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+def run_webpilot(query: str) -> dict:
+    """WebPilot 실행 함수"""
+    return orchestrator_runner.run(query)

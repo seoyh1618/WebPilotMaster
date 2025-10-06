@@ -9,6 +9,7 @@ from .html_parser import HTMLParser, HTMLParserError
 from .vision_analyzer import VisionAnalyzer, VisionAnalyzerError
 from .response_validator import ResponseValidator
 from WebPilot.constants import constants
+from WebPilot.constants.constants import setup_logging
 import json
 import logging
 import time
@@ -71,6 +72,9 @@ class MultilmodalPerceiverAgentClass:
         
         try:
             # 입력 파싱
+            if isinstance(input_text, dict):
+                input_text = json.dumps(input_text, ensure_ascii=False)
+
             input_data = json.loads(input_text)
             perceiver_input = PerceiverInput(**input_data)
             
@@ -139,7 +143,6 @@ class MultilmodalPerceiverAgentClass:
                     title='',
                     summary=f'페이지 분석 실패: {str(e)}',
                     visible_elements=[],
-                    keyword_matches={},
                     recommended_action=None,
                     analysis_warnings=[str(e)]
                 ),

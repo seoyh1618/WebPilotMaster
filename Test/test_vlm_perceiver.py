@@ -216,13 +216,6 @@ def print_analysis_result(analysis: PageAnalysisResult):
             if elem.href:
                 print(f"     링크: {elem.href[:60]}")
     
-    # 키워드 매칭
-    if analysis.keyword_matches:
-        print(f"\n🔍 키워드 매칭:")
-        for keyword, contexts in list(analysis.keyword_matches.items())[:3]:
-            print(f"  '{keyword}': {len(contexts)}개 발견")
-            for ctx in contexts[:2]:
-                print(f"    - {ctx[:60]}...")
     
     # 추천 액션
     if analysis.recommended_action:

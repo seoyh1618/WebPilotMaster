@@ -1,5 +1,6 @@
 from __future__ import annotations
 from google.adk.tools import ToolContext
+import json
 
 from typing import Any, Dict, List
 from pathlib import Path
@@ -45,7 +46,6 @@ class DomainPriorityResult(BaseModel):
     reason: str
     metadata: DomainMetadata  # ⭐ 구조화된 타입
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 YAML_PATH = Path(__file__).resolve().parents[2] / "config" / "domains.yaml"
@@ -246,7 +246,68 @@ def batch_test(queries: List[str]) -> None:
     print(f"{'='*70}")
     print(f"완료: 성공 {sum(1 for r in results if r['primary'])}/{len(results)}개")
     print(f"{'='*70}\n")
-
+class DomainPriorityClassifierAgentClass:
+    """Domain Priority Classifier Agent 클래스 (직접 호출용)"""
+    
+    def __init__(self):
+        self.llm_client = get_llm_client()
+        logger.info("DomainPriorityClassifierAgentClass 초기화 완료")
+    
+    def run(self, input_text: str) -> str:
+        """
+        AgentTool 인터페이스 호환 메서드
+        
+        Args:
+            input_text: JSON 형식 입력 {"query": "..."}
+            
+        Returns:
+            JSON 형식 출력 {"primary": {...}, "alternatives": [...], ...}
+        """
+        try:
+            # 입력 파싱
+            if isinstance(input_text, dict):
+                input_text = json.dumps(input_text, ensure_ascii=False)
+            
+            input_data = json.loads(input_text)
+            query = input_data.get("query", "")
+            
+            if not query:
+                raise ValueError("query가 비어있습니다")
+            
+            # 분류 실행
+            result = classify_domain_priorities(query=query, llm_client=self.llm_client)
+            
+            # 결과를 JSON 문자열로 반환
+            output = {
+                "result": result
+            }
+            
+            return json.dumps(output, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Domain Classifier 실행 실패: {e}", exc_info=True)
+            
+            # 에러 응답
+            error_output = {
+                "result": {
+                    "primary": None,
+                    "alternatives": [],
+                    "reason": f"오류: {str(e)}",
+                    "metadata": {
+                        "total_time": 0.0,
+                        "selection_info": {
+                            "primary_count": 0,
+                            "alternatives_count": 0,
+                            "total_candidates": 0,
+                            "filtered_out": 0,
+                            "selected_count": 0,
+                            "selection_rule": ""
+                        }
+                    }
+                }
+            }
+            
+            return json.dumps(error_output, ensure_ascii=False, indent=2)
 if __name__ == "__main__":
     test_queries = [
         "등록금 일정",
